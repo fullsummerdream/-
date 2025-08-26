@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>简谐振动与阻尼运动演示</title>
+<style>
+    html,body{margin:0;height:100%;display:flex;flex-direction:column;align-items:center;
+              background:linear-gradient(135deg,#111,#2d2d2d);color:#fff;font-family:'Courier New',monospace;}
+    h1{margin:20px 0 10px;text-shadow:0 0 6px rgba(255,255,255,.25);}
+    canvas{background:#111;border:1px solid #555;border-radius:8px;box-shadow:0 0 18px #000;}
+    .ctrl{margin:15px 0 25px;padding:12px 20px;background:rgba(255,255,255,.06);border-radius:8px;}
+    .slider{display:flex;align-items:center;gap:10px;margin:8px 0;}
+    label{min-width:75px;font-size:15px;}
+    input[type=range]{width:180px;cursor:pointer;}
+    .val{min-width:38px;text-align:right;font-weight:bold;}
+    button{margin:0 6px;padding:8px 18px;border:none;border-radius:4px;background:#444;color:#fff;cursor:pointer;transition:.3s;}
+    button:hover{background:#666;}
+</style>
+</head>
+<body>
+<h1>简谐振动与阻尼运动演示</h1>
+
+<canvas id="cv" width="800" height="400"></canvas>
+
+<div class="ctrl">
+    <div class="slider">
+        <label>阻尼比 ζ</label>
+        <input type="range" id="zeta" min="0" max="3" step="0.05" value="0">
+        <span class="val" id="zetaVal">0.00</span>
+    </div>
+
+    <div>
+        <button onclick="setMode('harmonic')">简谐振动</button>
+        <button onclick="setMode('under')">欠阻尼</button>
+        <button onclick="setMode('critical')">临界阻尼</button>
+        <button onclick="setMode('over')">过阻尼</button>
+        <button onclick="reset()">重置</button>
+    </div>
+</div>
+
+<script>
+/* ---------- 物理参数 ---------- */
+const ω0 = 1;        // 固有角频率
+let ζ   = 0;         // 阻尼比（0 时为简谐振动）
+let x0  = 1, v0 = 0; // 初始条件
+let t   = 0;
+let running = true;
+let mode = 'harmonic';
+
+/* ---------- Canvas ---------- */
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const cx = 50, cy = H/2;
+const scaleT = 30, scaleX = 120;
+
+/* ---------- 滑块联动 ---------- */
+const zSlider = document.getElementById('zeta');
+zSlider.oninput = e => {
+    ζ = parseFloat(e.target.value);
+    document.getElementById('zetaVal').textContent = ζ.toFixed(2);
+    t = 0;
+};
+function setMode(m){
+    mode = m;
+    switch(m){
+        case 'harmonic': ζ = 0;   break;
+        case 'under':    ζ = 0.3; break;
+        case 'critical': ζ = 1;   break;
+        case 'over':     ζ = 2;   break;
+    }
+    zSlider.value = ζ;
+    zSlider.oninput({target:zSlider});
+}
+
+/* ---------- 解析解 ---------- */
+function x(t){
+    if(ζ === 0){          // 简谐振动
+        return x0*Math.cos(ω0*t) + (v0/ω0)*Math.sin(ω0*t);
+    }
+    if(ζ < 1){            // 欠阻尼
+        const ωd = ω0*Math.sqrt(1-ζ*ζ);
+        return Math.exp(-ζ*ω0*t)*(x0*Math.cos(ωd*t) + (v0+ζ*ω0*x0)/ωd*Math.sin(ωd*t));
+    }
+    if(ζ === 1){          // 临界阻尼
+        return (x0 + (v0+ω0*x0)*t)*Math.exp(-ω0*t);
+    }
+    // 过阻尼
+    const r1 = -ω0*(ζ - Math.sqrt(ζ*ζ-1));
+    const r2 = -ω0*(ζ + Math.sqrt(ζ*ζ-1));
+    const A = (v0 - r2*x0)/(r1-r2);
+    const B = x0 - A;
+    return A*Math.exp(r1*t) + B*Math.exp(r2*t);
+}
+
+/* ---------- 绘图 ---------- */
+function draw(){
+    ctx.clearRect(0,0,W,H);
+
+    // 网格 & 坐标轴
+    ctx.strokeStyle='#333';
+    ctx.lineWidth=1;
+    for(let i=0;i<=20;i++){
+        const gx = cx + i*scaleT;
+        ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke();
+    }
+    for(let i=-2;i<=2;i++){
+        const gy = cy - i*scaleX;
+        ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke();
+    }
+    ctx.strokeStyle='#666';
+    ctx.beginPath();
+    ctx.moveTo(cx,0);ctx.lineTo(cx,H);
+    ctx.moveTo(0,cy);ctx.lineTo(W,cy);
+    ctx.stroke();
+
+    // 曲线
+    ctx.strokeStyle='#fff';
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<=t*10;i++){
+        const ti = i/10;
+        const px = cx + ti*scaleT;
+        const py = cy - x(ti)*scaleX;
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+
+    // 当前点
+    const curX = cx + t*scaleT;
+    const curY = cy - x(t)*scaleX;
+    ctx.fillStyle='#fff';
+    ctx.shadowColor='#fff';
+    ctx.shadowBlur=8;
+    ctx.beginPath();
+    ctx.arc(curX,curY,6,0,Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur=0;
+
+    // 文字
+    ctx.fillStyle='#ccc';
+    ctx.font='14px monospace';
+    ctx.fillText(`ζ = ${ζ.toFixed(2)}`, 15, 25);
+    ctx.fillText(`t = ${t.toFixed(2)} s`, 15, 45);
+    let type = '简谐振动';
+    if(ζ>0 && ζ<1) type='欠阻尼';
+    else if(ζ===1) type='临界阻尼';
+    else if(ζ>1) type='过阻尼';
+    ctx.fillText(type, 15, 65);
+
+    // 高亮当前模式
+    if(mode==='harmonic') ctx.fillStyle='#0ff';
+    else if(mode==='under') ctx.fillStyle='#0af';
+    else if(mode==='critical') ctx.fillStyle='#0f0';
+    else ctx.fillStyle='#f0a';
+    ctx.fillText('●', 15, 85);
+}
+
+/* ---------- 动画 ---------- */
+function loop(){
+    if(running){
+        t += 0.02;
+        if(t>20) t=0;
+    }
+    draw();
+    requestAnimationFrame(loop);
+}
+function reset(){t=0;}
+
+loop();
+</script>
+</body>
+</html>
